@@ -31,4 +31,4 @@
 *.out
 *.app
 memory_trace.clean
-*.tar*
+*.tar.gz
