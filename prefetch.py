@@ -16,7 +16,7 @@ print(f"Reading file from: {trace_path} num procs: {num_procs}")
 # number of frames in memory
 # wait time for accurate prefetch
 # logical cycles upper limit
-procs = []
+nodes = []
 
 class Request:
     def __init__(self, ln):
@@ -104,14 +104,15 @@ class PTE:
         self.curr_nodes = [home_node]
         self.permissions = 0
 
-
 class Page_table:
     def __init__(self, pid_):
         self.pid = pid_
+        self.home_pages = []
+        self.cache = []
 
         pass
 
-class Proc:
+class Node:
     def __init__(self, id):
         self.id = id
         self.prefetcher = Prefetcher()
@@ -122,7 +123,8 @@ class Proc:
     def service_request(self, request):
         addr = request.get_addr()
         page_num = addr >> page_size
-        home_node = page_num && 0x0f
+        home_node = page_num % num_procs
+        
 
         # Process access
         # See if hit or miss
@@ -133,14 +135,11 @@ class Proc:
     def add_request(self, req):
         self.request_queue.append(req)
 
-    def handle_request(self):
-        pass
-
 
 trace = Trace(trace_path)
 
 for i in range(num_procs):
-    procs.append(Proc(i))
+    nodes.append(Node(i))
 
 # core loop
 clk = 0
@@ -148,7 +147,7 @@ curr_request = trace.pop_request()
 while trace.get_count() > 0: # need upper limit for cycles as a safety
     # deal with real requests for this cycle
     while curr_request.get_lamport_clk() <= clk:
-        procs[curr_request.get_id()].service_request(curr_request)
+        nodes[curr_request.get_id()].service_request(curr_request)
         # deal with its effects?
         del curr_request
         curr_request = trace.pop_request()
@@ -160,8 +159,8 @@ while trace.get_count() > 0: # need upper limit for cycles as a safety
 
     # run prefetcher and service any requests
     for i in range(num_procs):
-        prefetch_req = procs[i].prefetcher.get_prefetch()
+        prefetch_req = nodes[i].prefetcher.get_prefetch()
         if(prefetch_req != None):
-            procs[i].service_request(prefetch_req)
+            nodes[i].service_request(prefetch_req)
 
     clk += 1
