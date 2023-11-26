@@ -1,6 +1,7 @@
 #!/bin/python3
 
 import sys
+import math
 
 if len(sys.argv) != 3:
     print("USAGE: parse.py trace_path num_procs")
@@ -12,8 +13,10 @@ num_procs = int(sys.argv[2])
 print(f"Reading file from: {trace_path} num procs: {num_procs}")
 
 # pagesize - standard 4KB
+# number of frames in memory
 # wait time for accurate prefetch
 # logical cycles upper limit
+procs = []
 
 class Request:
     def __init__(self, ln):
@@ -60,14 +63,22 @@ class Request:
 class Trace:
     def __init__(self, path) -> None:
         self.trace = []
+        self.count = 0
         file = open(path, "r")
         file_lines = file.read().splitlines()
         for ln in self.file_lines:
             self.trace.append(Request(ln))
+            self.count += 1
         close(file)
 
     def pop_request(self):
-        pass
+        if(self.count):
+            self.count -= 1
+            return trace.pop(0)
+        return None
+
+    def get_count(self):
+        return self.count
 
     def get_request(self, pid, clk):
         pass
@@ -83,43 +94,74 @@ class Prefetcher:
     def update(self, request): # update records based on the request made
         pass
 
+    def get_prefetch(self):
+        return None
+
+class PTE:
+    def __init__(self, num):
+        self.page_num = num
+        self.home_node = page_num && 0x0f
+        self.curr_nodes = [home_node]
+        self.permissions = 0
+
+
 class Page_table:
-    def __init__(self):
+    def __init__(self, pid_):
+        self.pid = pid_
+
         pass
 
 class Proc:
     def __init__(self, id):
         self.id = id
-        self.preftcher = Prefetcher()
+        self.prefetcher = Prefetcher()
         self.metric = Metrics()
         self.page_table
         self.request_queue = []    
 
     def service_request(self, request):
+        addr = request.get_addr()
+        page_num = addr >> page_size
+        home_node = page_num && 0x0f
+
         # Process access
         # See if hit or miss
         # update the prefetcher
         Prefetcher.update(request)
         return 0
-    
 
     def add_request(self, req):
         self.request_queue.append(req)
 
     def handle_request(self):
+        pass
 
 
 trace = Trace(trace_path)
 
-procs = []
 for i in range(num_procs):
     procs.append(Proc(i))
 
-# core loop   
+# core loop
+clk = 0
 curr_request = trace.pop_request()
-for clk in range(upper_limit): #need upper limit for cycles as a safety
-    # check if request for this cycle
-        # send request to processor
+while trace.get_count() > 0: # need upper limit for cycles as a safety
+    # deal with real requests for this cycle
+    while curr_request.get_lamport_clk() <= clk:
+        procs[curr_request.get_id()].service_request(curr_request)
         # deal with its effects?
-        # load new request and loop
-    # run prefetcher
+        del curr_request
+        curr_request = trace.pop_request()
+        if(curr_request == None):
+            break
+
+    if(curr_request == None):
+        break
+
+    # run prefetcher and service any requests
+    for i in range(num_procs):
+        prefetch_req = procs[i].prefetcher.get_prefetch()
+        if(prefetch_req != None):
+            procs[i].service_request(prefetch_req)
+
+    clk += 1
