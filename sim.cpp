@@ -14,6 +14,11 @@ class Request
 {
 public:
 	int clk, pid, rw, addr, size, type;
+	
+	Request():
+		clk(-1), pid(-1), rw(-1), 
+		addr(-1), size(-1), type(-1) {}
+
 	Request(int clk_, int id_, int rw_, 
 			int addr_, int size_, int type_):
 		clk(clk_), pid(id_), rw(rw_), addr(addr_), 
@@ -51,7 +56,7 @@ public:
 	{
 		if(clk == r2.clk)
 			return pid < r2.pid;
-		return clk < r2.pid;
+		return clk < r2.clk;
 	}
 };
 
@@ -95,7 +100,7 @@ public:
 
 	void update(Request req) {}
 
-	Request* getRequest(Request* req)
+	Request* getRequest(Request& req)
 	{
 		return NULL;
 	}
@@ -112,7 +117,6 @@ public:
 		home = num % numNodes;
 		currNodes = vector<int>(1, home);
 	}
-	
 };
 
 class PageTable
@@ -146,7 +150,6 @@ public:
 		int pageNum = addr >> pagesize;
 		int home = pageNum % numNodes;
 		return 0;
-
 	}
 };
 
@@ -182,6 +185,15 @@ int main(int argc, char const *argv[])
 
 		if(!currRequest) break;
 
+		for(int i = 0; i<numNodes; i++)
+		{
+			Request prefetchReq;
+			if(nodes[i].prefetcher.getRequest(prefetchReq))
+				nodes[i].serviceRequest(prefetchReq);
+		}
+		clk++;
+		if(clk % 100000 == 0)
+			cout << "reached clk " << clk << " with req " << trace.iter << endl;
 
 	}
 
