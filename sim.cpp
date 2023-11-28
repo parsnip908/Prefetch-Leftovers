@@ -8,7 +8,12 @@
 using namespace std;
 
 int pagesize = 12;
+int cachesize = 128;
 int numNodes;
+
+int globalClk = 0;
+
+enum State {M, E, S, I };
 
 class Request
 {
@@ -109,14 +114,24 @@ public:
 class PTE
 {
 public:
-	int pageNum, home, state, evictCause;
+	int pageNum, home, lastAccess, evictCause;
+	State state;
 	vector<int> currNodes;
 
-	PTE(int num): pageNum(num), state(0), evictCause(0)
+	PTE(int num): pageNum(num), state(E), lastAccess(globalClk), evictCause(0)
 	{
 		home = num % numNodes;
 		currNodes = vector<int>(1, home);
 	}
+
+	PTE(int num, State state_): pageNum(num), state(state_), lastAccess(globalClk), evictCause(0)
+	{
+		home = num % numNodes;
+		currNodes = vector<int>(1, home);
+	}
+
+
+	// bool operator==(const PTE& PTE2) {return pageNum == PTE2.pageNum;}
 };
 
 class PageTable
@@ -130,7 +145,33 @@ public:
 	{
 		homePages = vector<PTE>();
 		cache = vector<PTE>();
-	}	
+	}
+
+	PTE* getHomePage(int num, int rw)
+	{
+		for(vector<PTE>::iterator i = homePages.begin(); i < homePages.end(); i++)
+		{
+			if(i->pageNum == num)
+			{
+				return &(*i);
+			}
+		}
+		homePages.push_back(PTE(num));
+		return &homePages.back();
+	}
+
+	PTE* checkCache(int num, int rw)
+	{
+		for(vector<PTE>::iterator i = cache.begin(); i < cache.end(); i++)
+		{
+			if(i->pageNum == num)
+			{
+				return &(*i);
+			}
+		}
+		return NULL;
+
+	}
 };
 
 class Node
@@ -141,7 +182,9 @@ public:
 	// Metrics metrics;
 	PageTable pt;
 
-	Node(int pid_): pid(pid_), pt(pid_), prefetcher(pid_)
+	int homeAccessCount, externAccessCount;
+
+	Node(int pid_): pid(pid_), pt(pid_), prefetcher(pid_), homeAccessCount(0), externAccessCount(0)
 	{}
 	
 	int serviceRequest(Request& req)
@@ -149,7 +192,42 @@ public:
 		int addr = req.addr;
 		int pageNum = addr >> pagesize;
 		int home = pageNum % numNodes;
+
+		PTE* currPage;
+
+		if(home == pid)
+		{
+			homeAccessCount++;
+			currPage = pt.getHomePage(pageNum, req.rw);
+			// TODO: 
+			// check permissions
+			// update access time
+			// update metrics
+		}
+		else // remote page
+		{
+			externAccessCount++;
+			currPage = pt.checkCache(pageNum, req.rw);
+			// TODO: 
+			// catch null if missing
+			// check permissions
+			// update access time
+			// update metrics
+
+		}
+
+
+		prefetcher.update(req);
 		return 0;
+	}
+
+	PTE& serviceExternRequest(Request& req)
+	{}
+
+	void printMetrics(void)
+	{
+		cout << "Node " << pid << ": " << homeAccessCount << ", " << externAccessCount << endl;
+		cout << "        " << pt.homePages.size() << endl;
 	}
 };
 
@@ -171,12 +249,12 @@ int main(int argc, char const *argv[])
 
 	cout << "core loop" << endl;
 
-	int clk = 0;
+	// int clk = 0;
 	Request* currRequest = trace.pop_request();
-	cout << currRequest;
+	// cout << currRequest << endl;
 	while(currRequest)
 	{
-		while(currRequest && currRequest->clk <= clk)
+		while(currRequest && currRequest->clk <= globalClk)
 		{
 			nodes[currRequest->pid].serviceRequest(*currRequest);
 			//deal with effects?
@@ -191,11 +269,14 @@ int main(int argc, char const *argv[])
 			if(nodes[i].prefetcher.getRequest(prefetchReq))
 				nodes[i].serviceRequest(prefetchReq);
 		}
-		clk++;
-		if(clk % 100000 == 0)
-			cout << "reached clk " << clk << " with req " << trace.iter << endl;
+		globalClk++;
+		if(globalClk % 100000 == 0)
+			cout << "reached clk " << globalClk << " with req " << trace.iter << endl;
 
 	}
+
+	for(int i = 0; i < numNodes; i++)
+		nodes[i].printMetrics();
 
 	return 0;
 }
